@@ -19,7 +19,7 @@ export USER2=0xbfa750442aa4041ac562b77b90dacf2e0aa146a1c73702c789343aa1192c56aa
 ```
 sui client switch --address $ADMIN
 ```
-### publish 
+### Publish 
 ```
 sui client publish --gas-budget 100000000
 ```
@@ -35,7 +35,7 @@ export ADMINCAP=0xf0f51f32f09cb5fbe88b28d36ccc439e7bc0674c83ee02bd5eb34734522d33
 export TREASURY_CAP_BTD=0x197439858e6cad56d8794581e1e84ac6f687489195cb15136ad6e18d13652f83
 export TREASURY_CAP_USDT=0x9606bb68ec847d24679415dc80c897f890a4e34b755ff405c6955e533b96fec1
 ```
-### create market
+### Create market
 ```
 sui client call --package $PACKAGE_ID \
 --module simple_pre_market \
@@ -52,7 +52,7 @@ sui client call --package $PACKAGE_ID \
 │  │ Digest: Bu1341r4Kg5EYFZ3ttoe9L7qyRjVBrzXhaXsGyuoEfEG                                                         │
 │  └──    
 
-### get market id
+### Get market id
 ```
 export MARKET_ID=0x088d157fa437074b2f02dbb1d5be5bf88187765f20910370f804bf534b5e343d
 ```
@@ -78,12 +78,12 @@ sui client call --package $PACKAGE_ID \
 export USDT_TYPE=$PACKAGE_ID::usdt::USDT
 export USER2_COIN=0x81d7442c676ff31cf073f4cde3d6b9d25731acd85e023e9ef4f122679def5eee
 ```
-### switch USER1
+### Switch USER1
 ```
 sui client switch --address $USER1
 ```
-### user1 create a sell order 
-### sell 13 BTD,value of per BTD equals 1 USDT
+### USER1 create a sell order 
+### Sell 13 BTD,value of per BTD equals 1 USDT
 ```
 sui client call --package $PACKAGE_ID \
 --module simple_pre_market \
@@ -93,7 +93,7 @@ sui client call --package $PACKAGE_ID \
 --gas-budget 100000000
 ```
 
-### user1 cancel order
+### USER1 cancel order
 ```
 sui client call --package $PACKAGE_ID \
 --module simple_pre_market \
@@ -103,12 +103,12 @@ sui client call --package $PACKAGE_ID \
 --gas-budget 100000000
 ```
 
-### switch USER2
+### Switch USER2
 ```
 sui client switch --address $USER2
 ```
 
-### trade and take
+### Trade and take
 ### USER2 buy BTD using USDT
 ```
 sui client call --package $PACKAGE_ID \
