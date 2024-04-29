@@ -1,8 +1,10 @@
 # Simple_Pre_Market
 ## Description
-This is a simple pre market where users can freely buy and sell Coins without logging into the market, 
+This is a simple pre market where users can freely buy and sell Coins without logging into the market.
+
 Administrators can create markets and users can create orders and cancel orders.
-Users can also buy or sell Coins according to the description of the oder.
+
+Users can also buy or sell any types of Coin according to the description of the oder.
 
 ## Bash
 You can use the script.sh to depoly this project
