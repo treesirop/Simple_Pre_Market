@@ -1,20 +1,21 @@
 module dacade_pre_market::simple_pre_market {
     /*
-    This is a simple pre market where users can freely buy and sell Coins without logging into the market, 
+    This is a simple pre market where users can freely buy and sell Coins without logging into the market,
     Administrators can create markets and users can create orders and cancel orders.
-    Users can also buy or sell Coins according to the description of the oder.
+    Users can also buy or sell Coins according to the description of the order.
     */
 
     /* Dependencies */
     use sui::event::{Self};
-    use sui::bag::{Self,Bag};
-    use std::type_name::{Self,TypeName};
-    use std::string::{Self,String};
+    use sui::bag::{Self, Bag};
+    use std::type_name::{Self, TypeName};
+    use std::string::{Self, String};
     use sui::coin::{Coin};
     use sui::dynamic_object_field as ofield;
 
     /* Error Constants */
     const EMisMatchOwner: u64 = 0;
+    const EInvalidOrder: u64 = 1;
 
     /* Structs */
     // admin capability struct
@@ -28,29 +29,37 @@ module dacade_pre_market::simple_pre_market {
         items: Bag,
     }
 
-    //Buy order or Sell order struct 
-    //"buy_or_sell" is a bool type, setting false for buy,true for sell 
-    public struct Listing has key, store{
+    //Buy order struct
+    public struct BuyOrder has key, store {
         id: UID,
-        buy_or_sell: bool,
-        amount : u64,
+        amount: u64,
         for_object: String,
         price: u64,
         owner: address,
     }
 
-    //Order listed 
-    public struct Listed has copy, drop{
-        buy_or_sell: bool,
-        amount : u64,
+    //Sell order struct
+    public struct SellOrder has key, store {
+        id: UID,
+        amount: u64,
+        for_object: String,
+        price: u64,
+        owner: address,
+    }
+
+    //Order listed
+    public struct Listed has copy, drop {
+        order_id: UID,
+        is_buy_order: bool,
+        amount: u64,
         price: u64,
         for_object: String,
         collateral_type: TypeName,
         owner: address
     }
- 
+
     /* Functions */
-    fun init (ctx: &mut TxContext) {
+    fun init(ctx: &mut TxContext) {
         let admin = AdminCap {
             id: object::new(ctx)
         };
@@ -60,39 +69,38 @@ module dacade_pre_market::simple_pre_market {
 
     //only admin can create a market
     public entry fun create_market(_: &AdminCap, ctx: &mut TxContext) {
-        let market = Market{
+        let market = Market {
             id: object::new(ctx),
             items: bag::new(ctx),
         };
         transfer::share_object(market);
     }
 
-    //User can create a Buy order or Sell order
-    public entry fun create_order<T> (
+    //User can create a Buy order
+    public entry fun create_buy_order<T>(
         market: &mut Market,
-        buy_or_sell: bool,
-        amount : u64,
+        amount: u64,
         collateral: Coin<T>,
         price: u64,
-        for_object: vector<u8>,
+        for_object: String,
         ctx: &mut TxContext,
     ) {
         let key = object::id(&collateral);
-        let mut listing = Listing{
+        let mut buy_order = BuyOrder {
             id: object::new(ctx),
-            buy_or_sell,
             amount,
-            for_object: string::utf8(for_object),
+            for_object,
             price,
             owner: tx_context::sender(ctx),
         };
-        ofield::add(&mut listing.id,true,collateral);
-        bag::add(&mut market.items,key,listing);
+        ofield::add(&mut buy_order.id, true, collateral);
+        bag::add(&mut market.items, key, buy_order);
 
-        let listed = Listed{
-            buy_or_sell,
-            amount,   
-            for_object: string::utf8(for_object),
+        let listed = Listed {
+            order_id: buy_order.id,
+            is_buy_order: true,
+            amount,
+            for_object,
             price,
             collateral_type: type_name::get<Coin<T>>(),
             owner: tx_context::sender(ctx),
@@ -100,59 +108,115 @@ module dacade_pre_market::simple_pre_market {
         event::emit<Listed>(listed);
     }
 
-    //Order creator can cancel the order 
-    public entry fun cancel_order<T> (
+    //User can create a Sell order
+    public entry fun create_sell_order<T>(
+        market: &mut Market,
+        amount: u64,
+        collateral: Coin<T>,
+        price: u64,
+        for_object: String,
+        ctx: &mut TxContext,
+    ) {
+        let key = object::id(&collateral);
+        let mut sell_order = SellOrder {
+            id: object::new(ctx),
+            amount,
+            for_object,
+            price,
+            owner: tx_context::sender(ctx),
+        };
+        ofield::add(&mut sell_order.id, true, collateral);
+        bag::add(&mut market.items, key, sell_order);
+
+        let listed = Listed {
+            order_id: sell_order.id,
+            is_buy_order: false,
+            amount,
+            for_object,
+            price,
+            collateral_type: type_name::get<Coin<T>>(),
+            owner: tx_context::sender(ctx),
+        };
+        event::emit<Listed>(listed);
+    }
+
+    //Order creator can cancel the order
+    public entry fun cancel_order<T>(
         market: &mut Market,
         item_id: ID,
         ctx: &mut TxContext,
     ) {
-        let Listing{
-            mut id,
-            buy_or_sell:_,
-            amount:_,
-            for_object:_,
-            price:_,
-            owner,
-        } = bag::remove<ID,Listing>(&mut market.items,item_id);
-        assert!(owner == tx_context::sender(ctx),EMisMatchOwner);
-        let collateral = ofield::remove<bool,Coin<T>>(&mut id,true);
+        assert!(bag::contains(&market.items, item_id), EInvalidOrder);
+
+        let (owner, collateral) = if (bag::contains_with_type<BuyOrder>(&market.items, item_id)) {
+            let BuyOrder {
+                mut id,
+                amount: _,
+                for_object: _,
+                price: _,
+                owner,
+            } = bag::remove<ID, BuyOrder>(&mut market.items, item_id);
+            (owner, ofield::remove<bool, Coin<T>>(&mut id, true))
+        } else if (bag::contains_with_type<SellOrder>(&market.items, item_id)) {
+            let SellOrder {
+                mut id,
+                amount: _,
+                for_object: _,
+                price: _,
+                owner,
+            } = bag::remove<ID, SellOrder>(&mut market.items, item_id);
+            (owner, ofield::remove<bool, Coin<T>>(&mut id, true))
+        } else {
+            abort EInvalidOrder
+        };
+
+        assert!(owner == tx_context::sender(ctx), EMisMatchOwner);
         object::delete(id);
-        transfer::public_transfer(collateral,tx_context::sender(ctx));
+        transfer::public_transfer(collateral, tx_context::sender(ctx));
     }
 
-    //trade function 
-    public fun trade<T,U>(
-        market: &mut Market,
-        item_id: ID,
-        trade_object: Coin<U>,
-        _ctx: &mut TxContext,
-    ): Coin<T> {
-        let Listing{
-            mut id,
-            //false for buy true for sell
-            buy_or_sell:_,
-            amount:_,
-            for_object:_,
-            price:_,
-            owner,
-        } = bag::remove<ID,Listing>(&mut market.items,item_id);
-        transfer::public_transfer(trade_object,owner);
-        let collateral = ofield::remove<bool,Coin<T>>(&mut id,true);
-        object::delete(id);
-        collateral
-    }
-
-    //trade and take function
-    public entry fun trade_and_take<T ,U>(
+    //trade function
+    public fun trade<T, U>(
         market: &mut Market,
         item_id: ID,
         trade_object: Coin<U>,
         ctx: &mut TxContext,
-    ) {
-        let collateral = trade<T,U>(market,item_id,trade_object,ctx);
-        transfer::public_transfer(
-            collateral,
-            tx_context::sender(ctx)
-        );
-    }
-}
+    ): (bool, Coin<T>) {
+        assert!(bag::contains(&market.items, item_id), EInvalidOrder);
+
+        let (price, collateral) = if (bag::contains_with_type<BuyOrder>(&market.items, item_id)) {
+            let BuyOrder {
+                mut id,
+                amount,
+                for_object: _,
+                price,
+                owner,
+            } = bag::remove<ID, BuyOrder>(&mut market.items, item_id);
+            let trade_value = coin::value(&trade_object);
+            let expected_value = price * amount;
+            if (trade_value < expected_value) {
+                bag::add(&mut market.items, item_id, BuyOrder { id, amount, for_object: _, price, owner });
+                return (false, Coin {})
+            };
+            transfer::public_transfer(trade_object, owner);
+            let collateral = ofield::remove<bool, Coin<T>>(&mut id, true);
+            object::delete(id);
+            (price, collateral)
+        } else if (bag::contains_with_type<SellOrder>(&market.items, item_id)) {
+            let SellOrder {
+                mut id,
+                amount,
+                for_object: _,
+                price,
+                owner,
+            } = bag::remove<ID, SellOrder>(&mut market.items, item_id);
+            let trade_value = coin::value(&trade_object);
+            let expected_value = price * amount;
+            if (trade_value < expected_value) {
+                bag::add(&mut market.items, item_id, SellOrder { id, amount, for_object: _, price, owner });
+                return (false, Coin {})
+            };
+            transfer::public_transfer(trade_object, owner);
+            let collateral = ofield::remove<bool, Coin<T>>(&mut id, true);
+            object::delete(id);
+            (true, collateral)
