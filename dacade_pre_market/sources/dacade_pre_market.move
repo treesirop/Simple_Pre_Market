@@ -10,15 +10,18 @@ module dacade_pre_market::simple_pre_market {
     use sui::bag::{Self,Bag};
     use std::type_name::{Self,TypeName};
     use std::string::{Self,String};
-    use sui::coin::{Coin};
-    use sui::dynamic_object_field as ofield;
+    use sui::coin::{Self, Coin};
+    use sui::balance::{Self, Balance};
+    use sui::sui::{SUI};
+
+    use dacade_pre_market::oracle::{Self, Price};
 
     /* Error Constants */
     const EMisMatchOwner: u64 = 0;
 
     /* Structs */
     // admin capability struct
-    public struct AdminCap has key, store {
+    public struct AdminCap has key {
         id: UID
     }
 
@@ -30,10 +33,11 @@ module dacade_pre_market::simple_pre_market {
 
     //Buy order or Sell order struct 
     //"buy_or_sell" is a bool type, setting false for buy,true for sell 
-    public struct Listing has key, store{
+    public struct Listing<phantom T> has key, store{
         id: UID,
         buy_or_sell: bool,
-        amount : u64,
+        amount: u64,
+        balance: Balance<T>,
         for_object: String,
         price: u64,
         owner: address,
@@ -51,11 +55,7 @@ module dacade_pre_market::simple_pre_market {
  
     /* Functions */
     fun init (ctx: &mut TxContext) {
-        let admin = AdminCap {
-            id: object::new(ctx)
-        };
-        let admin_address = tx_context::sender(ctx);
-        transfer::transfer(admin, admin_address);
+       transfer::transfer(AdminCap{id: object::new(ctx)}, ctx.sender());
     }
 
     //only admin can create a market
@@ -77,17 +77,18 @@ module dacade_pre_market::simple_pre_market {
         for_object: vector<u8>,
         ctx: &mut TxContext,
     ) {
-        let key = object::id(&collateral);
-        let mut listing = Listing{
-            id: object::new(ctx),
+        let id_ = object::new(ctx);
+        let inner_ = object::uid_to_inner(&id_);
+        let listing = Listing<T>{
+            id: id_,
             buy_or_sell,
             amount,
+            balance: coin::into_balance(collateral),
             for_object: string::utf8(for_object),
             price,
             owner: tx_context::sender(ctx),
         };
-        ofield::add(&mut listing.id,true,collateral);
-        bag::add(&mut market.items,key,listing);
+        bag::add(&mut market.items, inner_, listing);
 
         let listed = Listed{
             buy_or_sell,
@@ -106,53 +107,53 @@ module dacade_pre_market::simple_pre_market {
         item_id: ID,
         ctx: &mut TxContext,
     ) {
-        let Listing{
-            mut id,
+        let Listing {
+            id,
             buy_or_sell:_,
             amount:_,
+            balance: balance_,
             for_object:_,
             price:_,
             owner,
-        } = bag::remove<ID,Listing>(&mut market.items,item_id);
-        assert!(owner == tx_context::sender(ctx),EMisMatchOwner);
-        let collateral = ofield::remove<bool,Coin<T>>(&mut id,true);
+        } = bag::remove<ID, Listing<T>>(&mut market.items,item_id);
+        assert!(owner == ctx.sender(), EMisMatchOwner);
         object::delete(id);
-        transfer::public_transfer(collateral,tx_context::sender(ctx));
+        let coin_ = coin::from_balance(balance_, ctx);
+        transfer::public_transfer(coin_, ctx.sender());
     }
 
     //trade function 
-    public fun trade<T,U>(
+    public fun trade<T>(
         market: &mut Market,
+        price: Price,
         item_id: ID,
-        trade_object: Coin<U>,
-        _ctx: &mut TxContext,
+        coin: Coin<SUI>,
+        ctx: &mut TxContext,
     ): Coin<T> {
         let Listing{
-            mut id,
-            //false for buy true for sell
+            id,
             buy_or_sell:_,
             amount:_,
+            balance: mut balance_,
             for_object:_,
             price:_,
             owner,
-        } = bag::remove<ID,Listing>(&mut market.items,item_id);
-        transfer::public_transfer(trade_object,owner);
-        let collateral = ofield::remove<bool,Coin<T>>(&mut id,true);
+        } = bag::remove<ID, Listing<T>>(&mut market.items,item_id);
         object::delete(id);
-        collateral
-    }
-
-    //trade and take function
-    public entry fun trade_and_take<T ,U>(
-        market: &mut Market,
-        item_id: ID,
-        trade_object: Coin<U>,
-        ctx: &mut TxContext,
-    ) {
-        let collateral = trade<T,U>(market,item_id,trade_object,ctx);
-        transfer::public_transfer(
-            collateral,
-            tx_context::sender(ctx)
-        );
+        // get the latest price from oracle 
+        let (latest_result, scaling_factor, _) = oracle::destroy(price);
+        // calculate the live sui price 
+        let sui_amount = (((((coin::value(&coin) as u128) * latest_result / scaling_factor)) / 100) as u64);
+        // calculate the stabil coin 
+        let balance = balance::split(&mut balance_, sui_amount);
+        // calculate the less coin 
+        let user_coin = coin::from_balance(balance_, ctx);
+        // transfer the coin from balance 
+        transfer::public_transfer(user_coin, ctx.sender());
+       // transfer the sui to owner
+        transfer::public_transfer(coin, owner);
+        // calculate the swap balance 
+        let coin_ = coin::from_balance(balance, ctx);
+        coin_
     }
 }
