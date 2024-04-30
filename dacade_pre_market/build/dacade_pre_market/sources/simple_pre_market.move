@@ -18,7 +18,7 @@ module dacade_pre_market::simple_pre_market {
 
     /* Structs */
     // admin capability struct
-    public struct AdminCap has key, store {
+    public struct AdminCap has key {
         id: UID
     }
 
@@ -51,11 +51,7 @@ module dacade_pre_market::simple_pre_market {
  
     /* Functions */
     fun init (ctx: &mut TxContext) {
-        let admin = AdminCap {
-            id: object::new(ctx)
-        };
-        let admin_address = tx_context::sender(ctx);
-        transfer::transfer(admin, admin_address);
+       transfer::transfer(AdminCap{id: object::new(ctx)}, ctx.sender());
     }
 
     //only admin can create a market
