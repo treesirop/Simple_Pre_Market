@@ -109,14 +109,14 @@ module dacade_pre_market::simple_pre_market {
             mut id,
             buy_or_sell:_,
             amount:_,
+            balance: balance_,
             for_object:_,
             price:_,
             owner,
-        } = bag::remove<ID,Listing>(&mut market.items,item_id);
-        assert!(owner == tx_context::sender(ctx),EMisMatchOwner);
-        let collateral = ofield::remove<bool,Coin<T>>(&mut id,true);
-        object::delete(id);
-        transfer::public_transfer(collateral,tx_context::sender(ctx));
+        } = bag::remove<ID, Listing<T>>(&mut market.items,item_id);
+        assert!(owner == ctx.sender(), EMisMatchOwner);
+        let coin_ = coin::from_balance(balance_, ctx);
+        transfer::public_transfer(coin_, ctx.sender());
     }
 
     //trade function 
