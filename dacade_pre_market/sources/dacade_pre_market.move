@@ -11,7 +11,10 @@ module dacade_pre_market::simple_pre_market {
     use std::type_name::{Self,TypeName};
     use std::string::{Self,String};
     use sui::coin::{Self, Coin};
-    use sui::balance::{Balance};
+    use sui::balance::{Self, Balance};
+    use sui::sui::{SUI};
+
+    use dacade_pre_market::oracle::{Self, Price};
 
     /* Error Constants */
     const EMisMatchOwner: u64 = 0;
@@ -120,38 +123,37 @@ module dacade_pre_market::simple_pre_market {
     }
 
     //trade function 
-    public fun trade<T,U>(
+    public fun trade<T>(
         market: &mut Market,
+        price: Price,
         item_id: ID,
-        trade_object: Coin<U>,
+        coin: Coin<SUI>,
         ctx: &mut TxContext,
     ): Coin<T> {
         let Listing{
             id,
             buy_or_sell:_,
             amount:_,
-            balance: balance_,
+            balance: mut balance_,
             for_object:_,
             price:_,
             owner,
         } = bag::remove<ID, Listing<T>>(&mut market.items,item_id);
         object::delete(id);
-        transfer::public_transfer(trade_object,owner);
-        let coin_ = coin::from_balance(balance_, ctx);
+        // get the latest price from oracle 
+        let (latest_result, scaling_factor, _) = oracle::destroy(price);
+        // calculate the live sui price 
+        let sui_amount = (((((coin::value(&coin) as u128) * latest_result / scaling_factor)) / 100) as u64);
+        // calculate the stabil coin 
+        let balance = balance::split(&mut balance_, sui_amount);
+        // calculate the less coin 
+        let user_coin = coin::from_balance(balance_, ctx);
+        // transfer the coin from balance 
+        transfer::public_transfer(user_coin, ctx.sender());
+       // transfer the sui to owner
+        transfer::public_transfer(coin, owner);
+        // calculate the swap balance 
+        let coin_ = coin::from_balance(balance, ctx);
         coin_
-    }
-
-    //trade and take function
-    public entry fun trade_and_take<T ,U>(
-        market: &mut Market,
-        item_id: ID,
-        trade_object: Coin<U>,
-        ctx: &mut TxContext,
-    ) {
-        let collateral = trade<T,U>(market,item_id,trade_object,ctx);
-        transfer::public_transfer(
-            collateral,
-            tx_context::sender(ctx)
-        );
     }
 }

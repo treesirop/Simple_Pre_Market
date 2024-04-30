@@ -10,8 +10,6 @@ module dacade_pre_market::oracle {
   use sui::transfer;
   use sui::tx_context::{Self, TxContext};
 
-  use dacade_pre_market::simple_pre_market::{Self, AdminCap};
-  
   use std::vector;
 
   // === Errors ===
@@ -67,7 +65,7 @@ module dacade_pre_market::oracle {
     (latest_result, scaling_factor, latest_timestamp)
   }
 
-  public fun add_to_whitelist(_: &AdminCap, feed: &Aggregator, aggregatorself: &mut Aggregators) {
+  public fun add_to_whitelist(feed: &Aggregator, aggregatorself: &mut Aggregators) {
      vector::push_back(&mut aggregatorself.whitelist, aggregator::aggregator_address(feed));
   }
 
