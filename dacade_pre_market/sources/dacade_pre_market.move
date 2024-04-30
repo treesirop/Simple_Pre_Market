@@ -12,7 +12,6 @@ module dacade_pre_market::simple_pre_market {
     use std::string::{Self,String};
     use sui::coin::{Self, Coin};
     use sui::balance::{Balance};
-    use sui::dynamic_object_field as ofield;
 
     /* Error Constants */
     const EMisMatchOwner: u64 = 0;
@@ -105,8 +104,8 @@ module dacade_pre_market::simple_pre_market {
         item_id: ID,
         ctx: &mut TxContext,
     ) {
-        let Listing{
-            mut id,
+        let Listing {
+            id,
             buy_or_sell:_,
             amount:_,
             balance: balance_,
@@ -115,6 +114,7 @@ module dacade_pre_market::simple_pre_market {
             owner,
         } = bag::remove<ID, Listing<T>>(&mut market.items,item_id);
         assert!(owner == ctx.sender(), EMisMatchOwner);
+        object::delete(id);
         let coin_ = coin::from_balance(balance_, ctx);
         transfer::public_transfer(coin_, ctx.sender());
     }
@@ -124,21 +124,21 @@ module dacade_pre_market::simple_pre_market {
         market: &mut Market,
         item_id: ID,
         trade_object: Coin<U>,
-        _ctx: &mut TxContext,
+        ctx: &mut TxContext,
     ): Coin<T> {
         let Listing{
-            mut id,
-            //false for buy true for sell
+            id,
             buy_or_sell:_,
             amount:_,
+            balance: balance_,
             for_object:_,
             price:_,
             owner,
-        } = bag::remove<ID,Listing>(&mut market.items,item_id);
-        transfer::public_transfer(trade_object,owner);
-        let collateral = ofield::remove<bool,Coin<T>>(&mut id, true);
+        } = bag::remove<ID, Listing<T>>(&mut market.items,item_id);
         object::delete(id);
-        collateral
+        transfer::public_transfer(trade_object,owner);
+        let coin_ = coin::from_balance(balance_, ctx);
+        coin_
     }
 
     //trade and take function
