@@ -10,7 +10,8 @@ module dacade_pre_market::simple_pre_market {
     use sui::bag::{Self,Bag};
     use std::type_name::{Self,TypeName};
     use std::string::{Self,String};
-    use sui::coin::{Coin};
+    use sui::coin::{Self, Coin};
+    use sui::balance::{Balance};
     use sui::dynamic_object_field as ofield;
 
     /* Error Constants */
@@ -30,10 +31,11 @@ module dacade_pre_market::simple_pre_market {
 
     //Buy order or Sell order struct 
     //"buy_or_sell" is a bool type, setting false for buy,true for sell 
-    public struct Listing has key, store{
+    public struct Listing<phantom T> has key, store{
         id: UID,
         buy_or_sell: bool,
-        amount : u64,
+        amount: u64,
+        balance: Balance<T>,
         for_object: String,
         price: u64,
         owner: address,
@@ -73,17 +75,18 @@ module dacade_pre_market::simple_pre_market {
         for_object: vector<u8>,
         ctx: &mut TxContext,
     ) {
-        let key = object::id(&collateral);
-        let mut listing = Listing{
-            id: object::new(ctx),
+        let id_ = object::new(ctx);
+        let inner_ = object::uid_to_inner(&id_);
+        let listing = Listing<T>{
+            id: id_,
             buy_or_sell,
             amount,
+            balance: coin::into_balance(collateral),
             for_object: string::utf8(for_object),
             price,
             owner: tx_context::sender(ctx),
         };
-        ofield::add(&mut listing.id,true,collateral);
-        bag::add(&mut market.items,key,listing);
+        bag::add(&mut market.items, inner_, listing);
 
         let listed = Listed{
             buy_or_sell,
@@ -133,7 +136,7 @@ module dacade_pre_market::simple_pre_market {
             owner,
         } = bag::remove<ID,Listing>(&mut market.items,item_id);
         transfer::public_transfer(trade_object,owner);
-        let collateral = ofield::remove<bool,Coin<T>>(&mut id,true);
+        let collateral = ofield::remove<bool,Coin<T>>(&mut id, true);
         object::delete(id);
         collateral
     }
